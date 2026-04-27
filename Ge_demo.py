@@ -70,6 +70,7 @@ def create_filter_comparison(image):
     """Create and save a 4-panel comparison of convolution filters."""
     gaussian = gaussian_kernel(size=7, sigma=1.5)
 
+    #apply filters sequentially
     t0 = time.perf_counter()
     denoised = apply_filter(image, gaussian)
     t_denoise = time.perf_counter() - t0
