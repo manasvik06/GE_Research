@@ -2,55 +2,31 @@
 Medical-style image filtering with convolution
 Author: Manasvi Khandelwal
 
-This script creates a synthetic MRI-like grayscale image and applies
-several common convolution filters:
+Applies common convolution filters to a real MRI brain scan:
 1. Gaussian blur for smoothing / denoising
 2. Sobel edge detection
 3. Sharpening
-
-The goal is to show how convolution can be used in an imaging context.
 """
 
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import fftconvolve
+from PIL import Image
 
 
-def create_mri_phantom(size=512):
-    """Create a synthetic MRI-like grayscale phantom image."""
-    image = np.zeros((size, size), dtype=np.float64)
-    cy, cx = size // 2, size // 2
-
-    y, x = np.ogrid[:size, :size]
-
-    # Outer ellipse
-    outer = ((x - cx) ** 2 / (cx * 0.85) ** 2 +
-             (y - cy) ** 2 / (cy * 0.92) ** 2) <= 1
-    image[outer] = 0.3
-
-    # Inner ellipse
-    inner = ((x - cx) ** 2 / (cx * 0.6) ** 2 +
-             (y - cy) ** 2 / (cy * 0.65) ** 2) <= 1
-    image[inner] = 0.7
-
-    # Small bright circular region
-    lesion_y, lesion_x = cy - 60, cx + 40
-    lesion = (x - lesion_x) ** 2 + (y - lesion_y) ** 2 <= 18 ** 2
-    image[lesion] = 1.0
-
-    # Add Gaussian noise
-    rng = np.random.default_rng(42)
-    noise = rng.normal(0, 0.04, image.shape)
-    image = np.clip(image + noise, 0, 1)
-
-    return image
+def load_image(path, size=512):
+    # Grayscale image pulled from the internet
+    img = Image.open(path).convert("L")
+    img = img.resize((size, size))
+    arr = np.array(img, dtype=np.float64)
+    return arr / 255.0
 
 
 def gaussian_kernel(size=7, sigma=1.5):
     """Create a normalized 2D Gaussian kernel."""
     ax = np.linspace(-(size // 2), size // 2, size)
     xx, yy = np.meshgrid(ax, ax)
-
     kernel = np.exp(-(xx ** 2 + yy ** 2) / (2 * sigma ** 2))
     return kernel / kernel.sum()
 
@@ -84,12 +60,9 @@ def compute_edge_magnitude(image):
     """Compute edge magnitude using Sobel X and Sobel Y filters."""
     gx = fftconvolve(image, SOBEL_X, mode="same")
     gy = fftconvolve(image, SOBEL_Y, mode="same")
-
     magnitude = np.sqrt(gx ** 2 + gy ** 2)
-
     if magnitude.max() == 0:
         return magnitude
-
     return magnitude / magnitude.max()
 
 
@@ -97,18 +70,34 @@ def create_filter_comparison(image):
     """Create and save a 4-panel comparison of convolution filters."""
     gaussian = gaussian_kernel(size=7, sigma=1.5)
 
+    t0 = time.perf_counter()
     denoised = apply_filter(image, gaussian)
+    t_denoise = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     edges = compute_edge_magnitude(denoised)
+    t_edges = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
     sharpened = apply_filter(image, SHARPEN_KERNEL)
+    t_sharpen = time.perf_counter() - t0
+
+    t_total = t_denoise + t_edges + t_sharpen
+
+    print(f"\nFilter runtimes on {image.shape[0]}x{image.shape[1]} image:")
+    print(f"  Gaussian blur      : {t_denoise*1000:.2f} ms")
+    print(f"  Sobel edge detect  : {t_edges*1000:.2f} ms")
+    print(f"  Sharpening         : {t_sharpen*1000:.2f} ms")
+    print(f"  Total (3 filters)  : {t_total*1000:.2f} ms")
 
     fig, axes = plt.subplots(1, 4, figsize=(18, 5))
     fig.patch.set_facecolor("white")
 
     panels = [
-        (image, "Original Phantom"),
+        (image,    "Original MRI"),
         (denoised, "Gaussian Blur\nDenoising"),
-        (edges, "Sobel Edge Detection"),
-        (sharpened, "Sharpening Filter"),
+        (edges,    "Sobel Edge Detection"),
+        (sharpened,"Sharpening Filter"),
     ]
 
     for ax, (img, title) in zip(axes, panels):
@@ -117,7 +106,7 @@ def create_filter_comparison(image):
         ax.axis("off")
 
     plt.suptitle(
-        "Convolution Filters on a Synthetic Medical-Style Image",
+        "Convolution Filters on a Real MRI Brain Scan",
         fontsize=16,
         fontweight="bold"
     )
@@ -129,11 +118,11 @@ def create_filter_comparison(image):
 
 
 def main():
-    print("Generating synthetic phantom image...")
-    phantom = create_mri_phantom(size=512)
+    print("Loading MRI image...")
+    image = load_image("image.png", size=512)
 
     print("Applying convolution filters...")
-    create_filter_comparison(phantom)
+    create_filter_comparison(image)
 
 
 if __name__ == "__main__":
